@@ -1,6 +1,5 @@
 import 'dart:async';
 
-import 'package:flame/components.dart';
 import 'package:flame_forge2d/flame_forge2d.dart';
 import 'package:flutter/material.dart';
 
@@ -10,17 +9,16 @@ import 'crane.dart';
 import 'slab.dart';
 
 /// goro core loop (Phase 1). A Forge2D world with a ground, a swinging crane,
-/// and a growing stack of slabs. Drop timing + physics determine the tower's
-/// lean and eventual collapse. Height is tracked in meters and floors.
+/// and a growing stack of slabs. Uses the default Forge2D viewfinder
+/// (metersToPixels), coordinates kept small (meters) as Box2D expects.
 class GoroGame extends Forge2DGame {
-  GoroGame()
-      : super(
-          gravity: Vector2(0, 24),
-          camera: CameraComponent.withFixedResolution(width: 48, height: 96),
-        );
+  GoroGame() : super(gravity: Vector2(0, 24), metersToPixels: 16);
 
-  static const double _groundY = 90;
-  static const double _slabHeight = 2.4;
+  // World is in meters, y grows DOWN (Forge2D default). Ground near origin;
+  // the tower grows in the -y direction (upward on screen).
+  static const double _groundY = 0;
+  static const double _slabHeight = 1.4;
+  static const double _slabWidth = 4.0;
   static const double _metersPerFloor = 3.5; // narrative scale
 
   late final Crane crane;
@@ -45,22 +43,44 @@ class GoroGame extends Forge2DGame {
   Future<void> onLoad() async {
     await super.onLoad();
 
-    // Ground body — a static floor the first slab rests on.
-    final ground = _Ground(y: _groundY, halfWidth: 40);
+    // Ground body at origin.
+    final ground = _Ground(y: _groundY, halfWidth: 20);
     world.add(ground);
 
-    // Crane sweeps above the base.
-    crane = Crane(sweepHalfWidth: 14, y: _groundY - 30);
+    // Crane hovers a fixed gap above the current tower top.
+    crane = Crane(
+      sweepHalfWidth: 6,
+      y: _craneYForFloors(0),
+      slabWidth: _slabWidth,
+      slabHeight: _slabHeight,
+    );
     world.add(crane);
 
-    // Point the camera at the base to start.
-    camera.moveTo(Vector2(0, _groundY - 20));
+    _focusCamera(instant: true);
+  }
+
+  // Crane hovers this many meters above the current tower top.
+  static const double _craneGap = 9;
+
+  double _towerTopY(int floorCount) => _groundY - floorCount * _slabHeight;
+  double _craneYForFloors(int floorCount) => _towerTopY(floorCount) - _craneGap;
+
+  /// Frame the crane and the tower top together.
+  void _focusCamera({bool instant = false}) {
+    // Look at a point a little below the crane so both crane and the growing
+    // top are comfortably in view.
+    final target = Vector2(0, crane.craneY + 4);
+    camera.moveTo(target);
   }
 
   /// Called on tap: drop the currently held slab from the crane's position.
   void dropSlab() {
     if (gameOver || !crane.holding || _fallingSlab != null) return;
-    final slab = Slab(spawn: crane.dropPoint);
+    final slab = Slab(
+      spawn: crane.dropPoint,
+      width: _slabWidth,
+      height: _slabHeight,
+    );
     _fallingSlab = slab;
     world.add(slab);
     crane.holding = false;
@@ -72,8 +92,7 @@ class GoroGame extends Forge2DGame {
     if (gameOver) return;
 
     final falling = _fallingSlab;
-    if (falling != null && falling.isMounted) {
-      // Wait for the dropped slab to settle (velocity near zero).
+    if (falling != null && falling.isMounted && falling.isLoaded) {
       final v = falling.body.linearVelocity.length;
       final w = falling.body.angularVelocity.abs();
       if (v < 0.15 && w < 0.15) {
@@ -90,11 +109,10 @@ class GoroGame extends Forge2DGame {
     floors = _slabs.length;
     heightMeters = floors * _metersPerFloor;
 
-    // Raise the camera to keep the top of the tower in view.
-    final topY = _groundY - floors * _slabHeight;
-    camera.moveTo(Vector2(0, topY + 20));
+    // Raise the crane above the new top, and follow with the camera.
+    crane.craneY = _craneYForFloors(floors);
+    _focusCamera();
 
-    // Landmark reveal on threshold cross.
     final passed = lastPassed(heightMeters);
     if (passed != null && passed != _lastAnnounced) {
       _lastAnnounced = passed;
@@ -107,18 +125,15 @@ class GoroGame extends Forge2DGame {
 
   void _checkCollapse() {
     if (_slabs.isEmpty) return;
-    // Collapse if the top slab has drifted too far horizontally from the base,
-    // or any settled slab tipped past a lean threshold.
     for (final s in _slabs) {
-      if (!s.isMounted) continue;
-      final angle = s.body.angle.abs();
-      if (angle > 0.6) {
+      if (!s.isMounted || !s.isLoaded) continue;
+      if (s.body.angle.abs() > 0.6) {
         _triggerCollapse();
         return;
       }
     }
     final top = _slabs.last;
-    if (top.isMounted && top.body.position.x.abs() > 20) {
+    if (top.isMounted && top.isLoaded && top.body.position.x.abs() > 12) {
       _triggerCollapse();
     }
   }
@@ -134,11 +149,11 @@ class GoroGame extends Forge2DGame {
   Stability get stability {
     if (_slabs.isEmpty) return Stability.steady;
     final top = _slabs.last;
-    if (!top.isMounted) return Stability.steady;
+    if (!top.isMounted || !top.isLoaded) return Stability.steady;
     final a = top.body.angle.abs();
     final drift = top.body.position.x.abs();
-    if (a > 0.35 || drift > 10) return Stability.critical;
-    if (a > 0.15 || drift > 5) return Stability.wobbling;
+    if (a > 0.35 || drift > 6) return Stability.critical;
+    if (a > 0.15 || drift > 3) return Stability.wobbling;
     return Stability.steady;
   }
 }
@@ -164,8 +179,9 @@ class _Ground extends BodyComponent {
 
   @override
   void render(Canvas canvas) {
+    // Thin ground line at the base.
     canvas.drawRect(
-      Rect.fromLTWH(-_halfWidth, _y, _halfWidth * 2, 4),
+      Rect.fromLTWH(-_halfWidth, _y, _halfWidth * 2, 0.6),
       Paint()..color = GoroColors.lineSoft,
     );
   }

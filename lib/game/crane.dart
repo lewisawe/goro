@@ -8,25 +8,30 @@ import '../theme/tokens.dart';
 /// The swinging crane at the top of the play area. Holds the next slab and
 /// sweeps left<->right. Purely visual (not a physics body); it reports the
 /// current horizontal drop position so the game can spawn a slab there.
+/// All coordinates are in meters (Forge2D world space).
 class Crane extends PositionComponent {
-  Crane({required this.sweepHalfWidth, required this.y});
+  Crane({
+    required this.sweepHalfWidth,
+    required double y,
+    required this.slabWidth,
+    required this.slabHeight,
+  }) : craneY = y;
 
-  /// Half the horizontal sweep range, in world units.
   final double sweepHalfWidth;
 
-  /// World-space y where the crane rides.
-  @override
-  final double y;
+  /// Mutable world-space y of the crane gantry (rises with the tower).
+  double craneY;
+  final double slabWidth;
+  final double slabHeight;
 
   double _t = 0;
-  final double _speed = 1.4; // radians/sec of the sweep oscillation
+  final double _speed = 1.2; // sweep oscillation rate
   bool holding = true;
 
-  /// Current world-space x of the held slab (follows the swing).
   double get dropX => sweepHalfWidth * math.sin(_t);
 
-  /// Current world position where a dropped slab should spawn.
-  Vector2 get dropPoint => Vector2(dropX, y + 2.5);
+  /// Where a dropped slab spawns (just below the crane gantry).
+  Vector2 get dropPoint => Vector2(dropX, craneY + 2.2);
 
   void resume() => holding = true;
 
@@ -38,40 +43,40 @@ class Crane extends PositionComponent {
 
   @override
   void render(Canvas canvas) {
-    // Rendered in world coordinates by the game's world; the crane draws its
-    // A-frame + cable + held slab + dotted guide relative to dropX.
     final x = dropX;
+    final y = craneY;
     final line = Paint()
       ..color = GoroColors.line
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 0.12;
+      ..strokeWidth = 0.15;
 
-    // A-frame gantry across the top
-    canvas.drawLine(Offset(-sweepHalfWidth - 4, y), Offset(sweepHalfWidth + 4, y), line);
-    // Apex + legs above the held slab
-    final apex = Offset(x, y - 3.2);
-    canvas.drawLine(Offset(x - 2.4, y), apex, line);
-    canvas.drawLine(Offset(x + 2.4, y), apex, line);
-    // Cable down to the slab
-    canvas.drawLine(Offset(x, y), Offset(x, y + 2.5), line);
+    // Horizontal gantry
+    canvas.drawLine(
+        Offset(-sweepHalfWidth - 2, y), Offset(sweepHalfWidth + 2, y), line);
+    // A-frame apex above the held point
+    final apex = Offset(x, y - 1.8);
+    canvas.drawLine(Offset(x - 1.4, y), apex, line);
+    canvas.drawLine(Offset(x + 1.4, y), apex, line);
+    // Cable down to slab
+    canvas.drawLine(Offset(x, y), Offset(x, y + 2.2 - slabHeight / 2), line);
 
     if (holding) {
-      // Held slab (outline style, matching the reference's empty slab)
-      final slabRect = Rect.fromCenter(center: Offset(x, y + 2.5 + 1.2), width: 8, height: 2.4);
+      final slabRect = Rect.fromCenter(
+          center: Offset(x, y + 2.2), width: slabWidth, height: slabHeight);
       canvas.drawRect(slabRect, Paint()..color = GoroColors.bgAlt);
       canvas.drawRect(
         slabRect,
         Paint()
           ..color = GoroColors.line
           ..style = PaintingStyle.stroke
-          ..strokeWidth = 0.12,
+          ..strokeWidth = 0.15,
       );
-      // Dotted vertical drop guide
+      // Dotted drop guide
       final guide = Paint()
         ..color = GoroColors.lineSoft
-        ..strokeWidth = 0.06;
-      for (double gy = y + 4; gy < y + 40; gy += 1.2) {
-        canvas.drawLine(Offset(x, gy), Offset(x, gy + 0.5), guide);
+        ..strokeWidth = 0.08;
+      for (double gy = y + 3; gy < y + 20; gy += 0.8) {
+        canvas.drawLine(Offset(x, gy), Offset(x, gy + 0.35), guide);
       }
     }
   }
