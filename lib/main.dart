@@ -1,5 +1,6 @@
 import 'package:flame/game.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import 'game/goro_game.dart';
 import 'theme/tokens.dart';
@@ -8,14 +9,13 @@ import 'world/landmarks.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Configure RevenueCat. The key lives in an untracked secrets file.
-  // For now this is guarded so the app runs before secrets.dart exists.
-  try {
-    // import 'economy/secrets.dart' show revenueCatAndroidKey; (gitignored)
-    // await PurchasesService.instance.configure(revenueCatAndroidKey);
-  } catch (_) {
-    // RevenueCat not yet configured — game still runs (Phase 0/1).
-  }
+  // Lock to portrait — goro is a vertical game (disable auto-rotate).
+  await SystemChrome.setPreferredOrientations([
+    DeviceOrientation.portraitUp,
+    DeviceOrientation.portraitDown,
+  ]);
+
+  // Configure RevenueCat here in Phase 3 (key lives in gitignored secrets.dart).
 
   runApp(const GoroApp());
 }
@@ -40,77 +40,247 @@ class GoroScreen extends StatefulWidget {
 }
 
 class _GoroScreenState extends State<GoroScreen> {
-  late final GoroGame _game;
+  late GoroGame _game;
+  Landmark? _banner;
 
   @override
   void initState() {
     super.initState();
-    _game = GoroGame()
+    _game = _buildGame();
+  }
+
+  GoroGame _buildGame() {
+    return GoroGame()
       ..onLandmarkPassed = _showLandmark
-      ..onCollapse = _onCollapse;
+      ..onCollapse = _onCollapse
+      ..onStateChanged = () => setState(() {});
   }
 
   void _showLandmark(Landmark l) {
-    // Phase 2: replace with the slide-in landmark card.
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('${l.name} — ${l.fact}')),
-    );
+    setState(() => _banner = l);
+    Future.delayed(const Duration(seconds: 3), () {
+      if (mounted && _banner == l) setState(() => _banner = null);
+    });
   }
 
-  void _onCollapse() {
-    // Phase 3: replace with the revive decision screen (RevenueCat).
+  void _onCollapse() => setState(() {});
+
+  void _restart() {
+    setState(() {
+      _banner = null;
+      _game = _buildGame();
+    });
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: GoroColors.bg,
-      body: Stack(
-        children: [
-          GameWidget(game: _game),
-          // Phase 1: HUD overlay (height / floors / stability meter).
-          const _HudPlaceholder(),
-        ],
+      body: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () => _game.dropSlab(),
+        child: Stack(
+          children: [
+            GameWidget(game: _game),
+            _Hud(game: _game),
+            if (_banner != null) _LandmarkCard(landmark: _banner!),
+            if (_game.gameOver) _GameOver(game: _game, onRestart: _restart),
+          ],
+        ),
       ),
     );
   }
 }
 
-/// Placeholder HUD matching the locked tokens; real HUD lands in Phase 1.
-class _HudPlaceholder extends StatelessWidget {
-  const _HudPlaceholder();
+class _Hud extends StatelessWidget {
+  const _Hud({required this.game});
+  final GoroGame game;
 
   @override
   Widget build(BuildContext context) {
-    return const SafeArea(
+    final stability = game.stability;
+    return SafeArea(
       child: Padding(
-        padding: EdgeInsets.all(16),
+        padding: const EdgeInsets.all(16),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
+            // HEIGHT + FLOORS
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('HEIGHT',
+                const Text('HEIGHT',
                     style: TextStyle(
                         color: GoroColors.textMuted,
-                        fontSize: 10,
-                        letterSpacing: 2)),
-                Text('0m',
-                    style: TextStyle(
-                        color: GoroColors.textStrong,
-                        fontSize: 40,
-                        fontWeight: FontWeight.w800)),
+                        fontSize: 11,
+                        letterSpacing: 2,
+                        fontWeight: FontWeight.w500)),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.baseline,
+                  textBaseline: TextBaseline.alphabetic,
+                  children: [
+                    Text('${game.heightMeters.round()}',
+                        style: const TextStyle(
+                            color: GoroColors.textStrong,
+                            fontSize: 44,
+                            height: 1,
+                            fontWeight: FontWeight.w800)),
+                    const SizedBox(width: 3),
+                    const Text('m',
+                        style: TextStyle(
+                            color: GoroColors.textMuted,
+                            fontSize: 16,
+                            fontWeight: FontWeight.w500)),
+                  ],
+                ),
+                const SizedBox(height: 2),
+                Row(children: [
+                  Text('${game.floors}',
+                      style: const TextStyle(
+                          color: GoroColors.textStrong,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700)),
+                  const SizedBox(width: 4),
+                  const Text('FLOORS',
+                      style: TextStyle(
+                          color: GoroColors.textMuted,
+                          fontSize: 11,
+                          letterSpacing: 1,
+                          fontWeight: FontWeight.w500)),
+                ]),
               ],
             ),
-            Text('STEADY',
-                style: TextStyle(
-                    color: GoroColors.accent,
-                    fontSize: 10,
-                    letterSpacing: 2,
-                    fontWeight: FontWeight.w700)),
+            // Stability meter
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Container(
+                  width: 96,
+                  height: 6,
+                  color: GoroColors.lineSoft,
+                  alignment: Alignment.centerLeft,
+                  child: FractionallySizedBox(
+                    widthFactor: switch (stability) {
+                      Stability.steady => 0.38,
+                      Stability.wobbling => 0.7,
+                      Stability.critical => 1.0,
+                    },
+                    child: Container(color: stability.color),
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(stability.label,
+                    style: TextStyle(
+                        color: stability.color,
+                        fontSize: 10,
+                        letterSpacing: 2,
+                        fontWeight: FontWeight.w700)),
+              ],
+            ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _LandmarkCard extends StatelessWidget {
+  const _LandmarkCard({required this.landmark});
+  final Landmark landmark;
+
+  @override
+  Widget build(BuildContext context) {
+    return Align(
+      alignment: Alignment.topCenter,
+      child: SafeArea(
+        child: Container(
+          margin: const EdgeInsets.only(top: 96),
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+          decoration: BoxDecoration(
+            color: GoroColors.bgAlt,
+            border: Border.all(color: GoroColors.line, width: 1.5),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(landmark.name.toUpperCase(),
+                  style: const TextStyle(
+                      color: GoroColors.textStrong,
+                      fontSize: 15,
+                      letterSpacing: 2,
+                      fontWeight: FontWeight.w800)),
+              const SizedBox(height: 4),
+              Text('${landmark.heightM.round()} m',
+                  style: const TextStyle(
+                      color: GoroColors.accent,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700)),
+              const SizedBox(height: 6),
+              SizedBox(
+                width: 240,
+                child: Text(landmark.fact,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                        color: GoroColors.textMuted, fontSize: 12, height: 1.4)),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _GameOver extends StatelessWidget {
+  const _GameOver({required this.game, required this.onRestart});
+  final GoroGame game;
+  final VoidCallback onRestart;
+
+  @override
+  Widget build(BuildContext context) {
+    return Positioned.fill(
+      child: Container(
+        color: GoroColors.bg.withValues(alpha: 0.92),
+        child: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text('COLLAPSE',
+                  style: TextStyle(
+                      color: GoroColors.danger,
+                      fontSize: 14,
+                      letterSpacing: 3,
+                      fontWeight: FontWeight.w800)),
+              const SizedBox(height: 12),
+              Text('${game.heightMeters.round()} m',
+                  style: const TextStyle(
+                      color: GoroColors.textStrong,
+                      fontSize: 56,
+                      fontWeight: FontWeight.w800)),
+              Text('${game.floors} FLOORS',
+                  style: const TextStyle(
+                      color: GoroColors.textMuted,
+                      fontSize: 12,
+                      letterSpacing: 2)),
+              const SizedBox(height: 28),
+              // Phase 3: this is where the RevenueCat "Safety Net" revive goes.
+              GestureDetector(
+                onTap: onRestart,
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 28, vertical: 12),
+                  color: GoroColors.line,
+                  child: const Text('REBUILD',
+                      style: TextStyle(
+                          color: GoroColors.bg,
+                          fontSize: 12,
+                          letterSpacing: 2,
+                          fontWeight: FontWeight.w700)),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
