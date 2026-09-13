@@ -12,13 +12,13 @@ import 'slab.dart';
 /// and a growing stack of slabs. Uses the default Forge2D viewfinder
 /// (metersToPixels), coordinates kept small (meters) as Box2D expects.
 class GoroGame extends Forge2DGame {
-  GoroGame() : super(gravity: Vector2(0, 24), metersToPixels: 16);
+  GoroGame() : super(gravity: Vector2(0, 60), metersToPixels: 16);
 
   // World is in meters, y grows DOWN (Forge2D default). Ground near origin;
   // the tower grows in the -y direction (upward on screen).
   static const double _groundY = 0;
   static const double _slabHeight = 1.4;
-  static const double _slabWidth = 4.0;
+  static const double _slabWidth = 5.0; // wider slabs (easier, per feedback)
   static const double _metersPerFloor = 3.5; // narrative scale
 
   late final Crane crane;
@@ -29,12 +29,30 @@ class GoroGame extends Forge2DGame {
   int floors = 0;
   bool gameOver = false;
 
+  /// Game phase state machine:
+  /// ready   — crane holding, waiting for a tap to drop
+  /// falling — a slab is dropping; wait for it to settle or fail
+  /// rising  — slab stable; crane+camera rising to the next height
+  _Phase _phase = _Phase.ready;
+
+  /// The world-y the camera is easing toward (the authoritative height).
+  double _cameraTargetY = 0;
+
+  /// HUD state — updated only on real events, listened to by a small
+  /// ValueListenableBuilder so the GameWidget itself is never rebuilt
+  /// (rebuilding GameWidget on setState was causing whole-screen stutter).
+  final ValueNotifier<GoroStats> stats =
+      ValueNotifier(const GoroStats(0, 0, Stability.steady, false));
+
   /// UI callbacks.
   void Function(Landmark landmark)? onLandmarkPassed;
   void Function()? onCollapse;
-  void Function()? onStateChanged;
 
   Landmark? _lastAnnounced;
+
+  void _publishStats() {
+    stats.value = GoroStats(heightMeters, floors, stability, gameOver);
+  }
 
   @override
   Color backgroundColor() => GoroColors.bg;
@@ -43,20 +61,24 @@ class GoroGame extends Forge2DGame {
   Future<void> onLoad() async {
     await super.onLoad();
 
-    // Ground body at origin.
-    final ground = _Ground(y: _groundY, halfWidth: 20);
+    // Base platform.
+    final ground = _Ground(y: _groundY, halfWidth: 12);
     world.add(ground);
 
-    // Crane hovers a fixed gap above the current tower top.
+    // Crane. Its y is driven by the camera each frame (locked together), so
+    // it can never separate into a "double image".
     crane = Crane(
-      sweepHalfWidth: 6,
+      sweepHalfWidth: 5.5,
+      sweepSpeed: 3.0,
       y: _craneYForFloors(0),
       slabWidth: _slabWidth,
       slabHeight: _slabHeight,
     );
     world.add(crane);
 
-    _focusCamera(instant: true);
+    _cameraTargetY = _craneYForFloors(0) + 4;
+    camera.viewfinder.position = Vector2(0, _cameraTargetY);
+    _phase = _Phase.ready;
   }
 
   // Crane hovers this many meters above the current tower top.
@@ -65,17 +87,9 @@ class GoroGame extends Forge2DGame {
   double _towerTopY(int floorCount) => _groundY - floorCount * _slabHeight;
   double _craneYForFloors(int floorCount) => _towerTopY(floorCount) - _craneGap;
 
-  /// Frame the crane and the tower top together.
-  void _focusCamera({bool instant = false}) {
-    // Look at a point a little below the crane so both crane and the growing
-    // top are comfortably in view.
-    final target = Vector2(0, crane.craneY + 4);
-    camera.moveTo(target);
-  }
-
-  /// Called on tap: drop the currently held slab from the crane's position.
+  /// Called on tap: drop the currently held slab. Only allowed when ready.
   void dropSlab() {
-    if (gameOver || !crane.holding || _fallingSlab != null) return;
+    if (gameOver || _phase != _Phase.ready) return;
     final slab = Slab(
       spawn: crane.dropPoint,
       width: _slabWidth,
@@ -84,6 +98,7 @@ class GoroGame extends Forge2DGame {
     _fallingSlab = slab;
     world.add(slab);
     crane.holding = false;
+    _phase = _Phase.falling;
   }
 
   @override
@@ -91,58 +106,92 @@ class GoroGame extends Forge2DGame {
     super.update(dt);
     if (gameOver) return;
 
+    // Ease the camera toward its target (frame-rate independent).
+    final cur = camera.viewfinder.position;
+    final ny = cur.y + (_cameraTargetY - cur.y) * (10 * dt).clamp(0.0, 1.0);
+    camera.viewfinder.position = Vector2(0, ny);
+
+    // LOCK the crane to the camera every frame — a fixed offset above the
+    // view center. This guarantees the crane and camera move as one, which
+    // removes the "crane appears twice / jumps" double-image.
+    crane.craneY = ny - 4;
+
+    switch (_phase) {
+      case _Phase.falling:
+        _updateFalling();
+      case _Phase.rising:
+        _updateRising(ny);
+      case _Phase.ready:
+        break;
+    }
+
+    _publishStats();
+  }
+
+  void _updateFalling() {
     final falling = _fallingSlab;
-    if (falling != null && falling.isMounted && falling.isLoaded) {
-      final v = falling.body.linearVelocity.length;
-      final w = falling.body.angularVelocity.abs();
-      if (v < 0.15 && w < 0.15) {
-        _settleSlab(falling);
+    if (falling == null || !falling.isMounted || !falling.isLoaded) return;
+
+    // Fail immediately if this slab (or any) tips past the lean threshold.
+    if (_isCollapsing()) {
+      _triggerCollapse();
+      return;
+    }
+
+    // Once the slab is stable → it's a new floor. Rise to the next height.
+    final v = falling.body.linearVelocity.length;
+    final w = falling.body.angularVelocity.abs();
+    if (v < 0.2 && w < 0.2) {
+      _slabs.add(falling);
+      _fallingSlab = null;
+      floors = _slabs.length;
+      heightMeters = floors * _metersPerFloor;
+
+      final passed = lastPassed(heightMeters);
+      if (passed != null && passed != _lastAnnounced) {
+        _lastAnnounced = passed;
+        onLandmarkPassed?.call(passed);
       }
-    }
 
-    _checkCollapse();
+      // Set the new camera target; crane rides with the camera. Only after we
+      // arrive (rising done) do we spawn the next slab.
+      _cameraTargetY = _craneYForFloors(floors) + 4;
+      _phase = _Phase.rising;
+    }
   }
 
-  void _settleSlab(Slab slab) {
-    _slabs.add(slab);
-    _fallingSlab = null;
-    floors = _slabs.length;
-    heightMeters = floors * _metersPerFloor;
-
-    // Raise the crane above the new top, and follow with the camera.
-    crane.craneY = _craneYForFloors(floors);
-    _focusCamera();
-
-    final passed = lastPassed(heightMeters);
-    if (passed != null && passed != _lastAnnounced) {
-      _lastAnnounced = passed;
-      onLandmarkPassed?.call(passed);
+  void _updateRising(double currentCamY) {
+    // Keep checking for collapse while rising.
+    if (_isCollapsing()) {
+      _triggerCollapse();
+      return;
     }
-
-    crane.resume();
-    onStateChanged?.call();
+    // Arrived at the new height? Hand the next slab to the crane.
+    if ((currentCamY - _cameraTargetY).abs() < 0.3) {
+      crane.resume(); // holding = true, next slab appears at the new height
+      _phase = _Phase.ready;
+    }
   }
 
-  void _checkCollapse() {
-    if (_slabs.isEmpty) return;
+  bool _isCollapsing() {
     for (final s in _slabs) {
       if (!s.isMounted || !s.isLoaded) continue;
-      if (s.body.angle.abs() > 0.6) {
-        _triggerCollapse();
-        return;
+      if (s.body.angle.abs() > 0.6) return true;
+    }
+    if (_slabs.isNotEmpty) {
+      final top = _slabs.last;
+      if (top.isMounted && top.isLoaded && top.body.position.x.abs() > 12) {
+        return true;
       }
     }
-    final top = _slabs.last;
-    if (top.isMounted && top.isLoaded && top.body.position.x.abs() > 12) {
-      _triggerCollapse();
-    }
+    return false;
   }
 
   void _triggerCollapse() {
     if (gameOver) return;
     gameOver = true;
     onCollapse?.call();
-    onStateChanged?.call();
+    _publishStats();
   }
 
   /// Current lean of the tower top (0 = plumb) for the stability meter.
@@ -156,6 +205,30 @@ class GoroGame extends Forge2DGame {
     if (a > 0.15 || drift > 3) return Stability.wobbling;
     return Stability.steady;
   }
+}
+
+/// Phase of the drop→settle→rise loop.
+enum _Phase { ready, falling, rising }
+
+/// Immutable HUD snapshot with value equality, so the ValueNotifier only
+/// notifies (and the HUD only repaints) when something actually changed.
+class GoroStats {
+  const GoroStats(this.heightMeters, this.floors, this.stability, this.gameOver);
+  final double heightMeters;
+  final int floors;
+  final Stability stability;
+  final bool gameOver;
+
+  @override
+  bool operator ==(Object other) =>
+      other is GoroStats &&
+      other.heightMeters == heightMeters &&
+      other.floors == floors &&
+      other.stability == stability &&
+      other.gameOver == gameOver;
+
+  @override
+  int get hashCode => Object.hash(heightMeters, floors, stability, gameOver);
 }
 
 /// Static ground the tower is built on.

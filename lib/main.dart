@@ -41,7 +41,13 @@ class GoroScreen extends StatefulWidget {
 
 class _GoroScreenState extends State<GoroScreen> {
   late GoroGame _game;
-  Landmark? _banner;
+
+  /// Landmark banner is transient UI, kept in a notifier so it doesn't
+  /// rebuild the GameWidget either.
+  final ValueNotifier<Landmark?> _banner = ValueNotifier(null);
+
+  /// A key change forces a fresh GameWidget only on explicit restart.
+  Key _gameKey = UniqueKey();
 
   @override
   void initState() {
@@ -50,26 +56,28 @@ class _GoroScreenState extends State<GoroScreen> {
   }
 
   GoroGame _buildGame() {
-    return GoroGame()
-      ..onLandmarkPassed = _showLandmark
-      ..onCollapse = _onCollapse
-      ..onStateChanged = () => setState(() {});
+    return GoroGame()..onLandmarkPassed = _showLandmark;
   }
 
   void _showLandmark(Landmark l) {
-    setState(() => _banner = l);
+    _banner.value = l;
     Future.delayed(const Duration(seconds: 3), () {
-      if (mounted && _banner == l) setState(() => _banner = null);
+      if (_banner.value == l) _banner.value = null;
     });
   }
 
-  void _onCollapse() => setState(() {});
-
   void _restart() {
+    _banner.value = null;
     setState(() {
-      _banner = null;
       _game = _buildGame();
+      _gameKey = UniqueKey();
     });
+  }
+
+  @override
+  void dispose() {
+    _banner.dispose();
+    super.dispose();
   }
 
   @override
@@ -81,10 +89,31 @@ class _GoroScreenState extends State<GoroScreen> {
         onTap: () => _game.dropSlab(),
         child: Stack(
           children: [
-            GameWidget(game: _game),
-            _Hud(game: _game),
-            if (_banner != null) _LandmarkCard(landmark: _banner!),
-            if (_game.gameOver) _GameOver(game: _game, onRestart: _restart),
+            // The game surface is built ONCE and never rebuilt by state
+            // changes — HUD/overlays listen to notifiers instead. This is
+            // what removes the whole-screen stutter.
+            GameWidget(key: _gameKey, game: _game),
+
+            // HUD listens only to the stats notifier.
+            ValueListenableBuilder<GoroStats>(
+              valueListenable: _game.stats,
+              builder: (_, s, __) => _Hud(stats: s),
+            ),
+
+            // Landmark banner
+            ValueListenableBuilder<Landmark?>(
+              valueListenable: _banner,
+              builder: (_, l, __) =>
+                  l == null ? const SizedBox.shrink() : _LandmarkCard(landmark: l),
+            ),
+
+            // Game over overlay (from stats)
+            ValueListenableBuilder<GoroStats>(
+              valueListenable: _game.stats,
+              builder: (_, s, __) => s.gameOver
+                  ? _GameOver(stats: s, onRestart: _restart)
+                  : const SizedBox.shrink(),
+            ),
           ],
         ),
       ),
@@ -93,12 +122,12 @@ class _GoroScreenState extends State<GoroScreen> {
 }
 
 class _Hud extends StatelessWidget {
-  const _Hud({required this.game});
-  final GoroGame game;
+  const _Hud({required this.stats});
+  final GoroStats stats;
 
   @override
   Widget build(BuildContext context) {
-    final stability = game.stability;
+    final stability = stats.stability;
     return SafeArea(
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -106,7 +135,6 @@ class _Hud extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            // HEIGHT + FLOORS
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -120,7 +148,7 @@ class _Hud extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.baseline,
                   textBaseline: TextBaseline.alphabetic,
                   children: [
-                    Text('${game.heightMeters.round()}',
+                    Text('${stats.heightMeters.round()}',
                         style: const TextStyle(
                             color: GoroColors.textStrong,
                             fontSize: 44,
@@ -136,7 +164,7 @@ class _Hud extends StatelessWidget {
                 ),
                 const SizedBox(height: 2),
                 Row(children: [
-                  Text('${game.floors}',
+                  Text('${stats.floors}',
                       style: const TextStyle(
                           color: GoroColors.textStrong,
                           fontSize: 12,
@@ -151,7 +179,6 @@ class _Hud extends StatelessWidget {
                 ]),
               ],
             ),
-            // Stability meter
             Column(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
@@ -233,8 +260,8 @@ class _LandmarkCard extends StatelessWidget {
 }
 
 class _GameOver extends StatelessWidget {
-  const _GameOver({required this.game, required this.onRestart});
-  final GoroGame game;
+  const _GameOver({required this.stats, required this.onRestart});
+  final GoroStats stats;
   final VoidCallback onRestart;
 
   @override
@@ -253,18 +280,18 @@ class _GameOver extends StatelessWidget {
                       letterSpacing: 3,
                       fontWeight: FontWeight.w800)),
               const SizedBox(height: 12),
-              Text('${game.heightMeters.round()} m',
+              Text('${stats.heightMeters.round()} m',
                   style: const TextStyle(
                       color: GoroColors.textStrong,
                       fontSize: 56,
                       fontWeight: FontWeight.w800)),
-              Text('${game.floors} FLOORS',
+              Text('${stats.floors} FLOORS',
                   style: const TextStyle(
                       color: GoroColors.textMuted,
                       fontSize: 12,
                       letterSpacing: 2)),
               const SizedBox(height: 28),
-              // Phase 3: this is where the RevenueCat "Safety Net" revive goes.
+              // Phase 3: RevenueCat "Safety Net" revive goes here.
               GestureDetector(
                 onTap: onRestart,
                 child: Container(

@@ -15,17 +15,20 @@ class Crane extends PositionComponent {
     required double y,
     required this.slabWidth,
     required this.slabHeight,
-  }) : craneY = y;
+    double sweepSpeed = 1.2,
+  })  : craneY = y,
+        _speed = sweepSpeed;
 
   final double sweepHalfWidth;
 
-  /// Mutable world-space y of the crane gantry (rises with the tower).
+  /// World-space y of the crane gantry. Driven by the game each frame
+  /// (locked to the camera) so the crane and view never separate.
   double craneY;
   final double slabWidth;
   final double slabHeight;
 
   double _t = 0;
-  final double _speed = 1.2; // sweep oscillation rate
+  final double _speed; // sweep oscillation rate
   bool holding = true;
 
   double get dropX => sweepHalfWidth * math.sin(_t);
