@@ -1,0 +1,41 @@
+# Miscellaneous
+*.class
+*.log
+*.pyc
+*.swp
+.DS_Store
+.atom/
+.buildlog/
+.history
+.svn/
+migrate_working_dir/
+
+# IntelliJ / VS Code
+.idea/
+.vscode/
+*.iml
+*.ipr
+*.iws
+
+# Flutter/Dart/Pub
+**/doc/api/
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.pub-cache/
+.pub/
+build/
+pubspec.lock
+
+# Android
+android/**/gradle-wrapper.jar
+android/.gradle
+android/captures/
+android/local.properties
+android/**/GeneratedPluginRegistrant.java
+android/key.properties
+*.jks
+
+# Secrets — never commit RevenueCat keys
+lib/economy/secrets.dart
+.env
