@@ -245,6 +245,15 @@ Never cut: the physics core, one clean RevenueCat purchase that changes the sim,
 - **Difficulty too easy** (noted 2026-09-13 after Phase 1). Options: narrower slabs, stricter lean/drift collapse thresholds, faster/wider crane swing, or slabs that must overlap the one below by a minimum. Revisit after visuals.
   - Update: difficulty pass applied (collapse at ~20° / 6m drift, earlier stability warnings, slabs 4.2). Awaiting play verdict.
 
+### Next session — queued tuning (noted 2026-09-13 EOD)
+- [ ] **Height per floor too fast**: 140m/floor makes each drop feel like a huge unrealistic leap. Lower to ~40–60m/floor and re-tune `skyDarkness` start/end so the space inversion is still reachable in a session but the climb feels more grounded. (Files: `_metersPerFloor` in goro_game.dart; `skyDarkness` in world/landmarks.dart.)
+- [ ] **Remove the dotted center drop-guide line**: it makes aiming trivial. Removing it forces judging the drop from the swinging slab alone — a difficulty + polish win. (File: crane.dart render, the guide loop.)
+- [ ] Re-verify collapse/stability thresholds after the above (may need adjusting once the guide is gone).
+
+### Unblocked for next session
+- Sounds: user sourcing royalty-free SFX (landing thunk, perfect chime, ambient wind). Must be licensed (submission rule).
+- RevenueCat: user has an account; API keys incoming → unblocks Batch D.
+
 ## 13. Feature roadmap — "top tier & addictive"
 
 Goal: take goro from a clean tech demo to something someone plays all day. The clean blueprint aesthetic stays (it's the Design Award angle); we add *feel*, a *compulsion loop*, *retention*, and *craft* — not visual clutter. Batches are ordered by impact so that if time slips, what's cut is least important. We build toward all of it.
