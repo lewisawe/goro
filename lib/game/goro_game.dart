@@ -1,10 +1,9 @@
 import 'dart:async';
 
-import 'package:flame/game.dart';
 import 'package:flame_forge2d/flame_forge2d.dart';
 import 'package:flutter/material.dart';
 
-import 'world/landmarks.dart';
+import '../world/landmarks.dart';
 
 /// goro — Forge2D world. Phase 1 skeleton (see goro-spec.md §8).
 ///

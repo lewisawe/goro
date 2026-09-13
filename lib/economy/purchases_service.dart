@@ -31,8 +31,8 @@ class PurchasesService {
   /// Purchase a package. Returns updated CustomerInfo on success.
   /// Throws PlatformException on failure (let the UI handle it).
   Future<CustomerInfo> buy(Package package) async {
-    final result = await Purchases.purchasePackage(package);
-    return result.customerInfo;
+    final customerInfo = await Purchases.purchasePackage(package);
+    return customerInfo;
   }
 
   Future<CustomerInfo> restore() => Purchases.restorePurchases();

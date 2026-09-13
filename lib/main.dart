@@ -1,7 +1,6 @@
 import 'package:flame/game.dart';
 import 'package:flutter/material.dart';
 
-import 'economy/purchases_service.dart';
 import 'game/goro_game.dart';
 import 'theme/tokens.dart';
 import 'world/landmarks.dart';
