@@ -35,13 +35,13 @@ void main() {
       expect(lastPassed(93)!.name, 'Statue of Liberty');
       expect(lastPassed(500)!.name, 'Eiffel Tower');
       expect(lastPassed(1000)!.name, 'Burj Khalifa');
-      expect(lastPassed(500000)!.name, 'Low orbit');
+      expect(lastPassed(9000)!.name, 'Low orbit');
     });
 
     test('nextTarget points to the upcoming landmark', () {
       expect(nextTarget(0)!.name, 'Statue of Liberty');
       expect(nextTarget(100)!.name, 'Eiffel Tower');
-      expect(nextTarget(500000), isNull);
+      expect(nextTarget(9000), isNull);
     });
 
     test('ladder is strictly ascending by height', () {

@@ -18,8 +18,12 @@ class GoroGame extends Forge2DGame {
   // the tower grows in the -y direction (upward on screen).
   static const double _groundY = 0;
   static const double _slabHeight = 1.4;
-  static const double _slabWidth = 5.0; // wider slabs (easier, per feedback)
-  static const double _metersPerFloor = 3.5; // narrative scale
+  static const double _slabWidth = 4.2; // slightly smaller, more refined
+  // Compressed narrative scale: each floor covers more "altitude" so a normal
+  // session climbs through all bands (city -> clouds -> space) in ~25-30
+  // floors. Reaching space in a run is the payoff; realistic 3.5m/floor would
+  // need thousands of floors to leave the city.
+  static const double _metersPerFloor = 140;
 
   late final Crane crane;
   final List<Slab> _slabs = [];
@@ -42,7 +46,7 @@ class GoroGame extends Forge2DGame {
   /// ValueListenableBuilder so the GameWidget itself is never rebuilt
   /// (rebuilding GameWidget on setState was causing whole-screen stutter).
   final ValueNotifier<GoroStats> stats =
-      ValueNotifier(const GoroStats(0, 0, Stability.steady, false));
+      ValueNotifier(const GoroStats(0, 0, Stability.steady, false, 0));
 
   /// UI callbacks.
   void Function(Landmark landmark)? onLandmarkPassed;
@@ -51,11 +55,17 @@ class GoroGame extends Forge2DGame {
   Landmark? _lastAnnounced;
 
   void _publishStats() {
-    stats.value = GoroStats(heightMeters, floors, stability, gameOver);
+    stats.value = GoroStats(
+      heightMeters,
+      floors,
+      stability,
+      gameOver,
+      skyDarkness(heightMeters),
+    );
   }
 
   @override
-  Color backgroundColor() => GoroColors.bg;
+  Color backgroundColor() => const Color(0x00000000); // transparent; SkyBackground shows through
 
   @override
   Future<void> onLoad() async {
@@ -213,11 +223,13 @@ enum _Phase { ready, falling, rising }
 /// Immutable HUD snapshot with value equality, so the ValueNotifier only
 /// notifies (and the HUD only repaints) when something actually changed.
 class GoroStats {
-  const GoroStats(this.heightMeters, this.floors, this.stability, this.gameOver);
+  const GoroStats(this.heightMeters, this.floors, this.stability, this.gameOver,
+      this.skyDarkness);
   final double heightMeters;
   final int floors;
   final Stability stability;
   final bool gameOver;
+  final double skyDarkness;
 
   @override
   bool operator ==(Object other) =>
@@ -225,10 +237,12 @@ class GoroStats {
       other.heightMeters == heightMeters &&
       other.floors == floors &&
       other.stability == stability &&
-      other.gameOver == gameOver;
+      other.gameOver == gameOver &&
+      other.skyDarkness == skyDarkness;
 
   @override
-  int get hashCode => Object.hash(heightMeters, floors, stability, gameOver);
+  int get hashCode =>
+      Object.hash(heightMeters, floors, stability, gameOver, skyDarkness);
 }
 
 /// Static ground the tower is built on.

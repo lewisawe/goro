@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'game/goro_game.dart';
 import 'theme/tokens.dart';
 import 'world/landmarks.dart';
+import 'world/sky_background.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -89,10 +90,23 @@ class _GoroScreenState extends State<GoroScreen> {
         onTap: () => _game.dropSlab(),
         child: Stack(
           children: [
+            // Altitude-driven sky (behind everything). Rebuilds only its own
+            // painter subtree via the stats notifier; game surface untouched.
+            ValueListenableBuilder<GoroStats>(
+              valueListenable: _game.stats,
+              builder: (_, s, __) => Positioned.fill(
+                child: SkyBackground(darkness: s.skyDarkness),
+              ),
+            ),
+
             // The game surface is built ONCE and never rebuilt by state
             // changes — HUD/overlays listen to notifiers instead. This is
             // what removes the whole-screen stutter.
-            GameWidget(key: _gameKey, game: _game),
+            GameWidget(
+              key: _gameKey,
+              game: _game,
+              backgroundBuilder: (_) => const SizedBox.shrink(),
+            ),
 
             // HUD listens only to the stats notifier.
             ValueListenableBuilder<GoroStats>(
@@ -128,6 +142,12 @@ class _Hud extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final stability = stats.stability;
+    // Text inverts to light as the sky darkens, so the HUD stays readable
+    // from day through space.
+    final d = stats.skyDarkness;
+    final strong = Color.lerp(GoroColors.textStrong, Colors.white, d)!;
+    final muted = Color.lerp(
+        GoroColors.textMuted, const Color(0xFFB8C0CC), d)!;
     return SafeArea(
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -138,9 +158,9 @@ class _Hud extends StatelessWidget {
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('HEIGHT',
+                Text('HEIGHT',
                     style: TextStyle(
-                        color: GoroColors.textMuted,
+                        color: muted,
                         fontSize: 11,
                         letterSpacing: 2,
                         fontWeight: FontWeight.w500)),
@@ -149,15 +169,15 @@ class _Hud extends StatelessWidget {
                   textBaseline: TextBaseline.alphabetic,
                   children: [
                     Text('${stats.heightMeters.round()}',
-                        style: const TextStyle(
-                            color: GoroColors.textStrong,
+                        style: TextStyle(
+                            color: strong,
                             fontSize: 44,
                             height: 1,
                             fontWeight: FontWeight.w800)),
                     const SizedBox(width: 3),
-                    const Text('m',
+                    Text('m',
                         style: TextStyle(
-                            color: GoroColors.textMuted,
+                            color: muted,
                             fontSize: 16,
                             fontWeight: FontWeight.w500)),
                   ],
@@ -165,14 +185,14 @@ class _Hud extends StatelessWidget {
                 const SizedBox(height: 2),
                 Row(children: [
                   Text('${stats.floors}',
-                      style: const TextStyle(
-                          color: GoroColors.textStrong,
+                      style: TextStyle(
+                          color: strong,
                           fontSize: 12,
                           fontWeight: FontWeight.w700)),
                   const SizedBox(width: 4),
-                  const Text('FLOORS',
+                  Text('FLOORS',
                       style: TextStyle(
-                          color: GoroColors.textMuted,
+                          color: muted,
                           fontSize: 11,
                           letterSpacing: 1,
                           fontWeight: FontWeight.w500)),
@@ -185,7 +205,7 @@ class _Hud extends StatelessWidget {
                 Container(
                   width: 96,
                   height: 6,
-                  color: GoroColors.lineSoft,
+                  color: GoroColors.lineSoft.withValues(alpha: 0.6),
                   alignment: Alignment.centerLeft,
                   child: FractionallySizedBox(
                     widthFactor: switch (stability) {
