@@ -186,11 +186,13 @@ class GoroGame extends Forge2DGame {
   bool _isCollapsing() {
     for (final s in _slabs) {
       if (!s.isMounted || !s.isLoaded) continue;
-      if (s.body.angle.abs() > 0.6) return true;
+      // Tighter lean tolerance: ~20° tips the tower (was ~34°).
+      if (s.body.angle.abs() > 0.35) return true;
     }
     if (_slabs.isNotEmpty) {
       final top = _slabs.last;
-      if (top.isMounted && top.isLoaded && top.body.position.x.abs() > 12) {
+      // Tighter drift: top floor can't wander more than ~6m off center.
+      if (top.isMounted && top.isLoaded && top.body.position.x.abs() > 6) {
         return true;
       }
     }
@@ -205,14 +207,15 @@ class GoroGame extends Forge2DGame {
   }
 
   /// Current lean of the tower top (0 = plumb) for the stability meter.
+  /// Tightened so the meter warns earlier and matches the stricter collapse.
   Stability get stability {
     if (_slabs.isEmpty) return Stability.steady;
     final top = _slabs.last;
     if (!top.isMounted || !top.isLoaded) return Stability.steady;
     final a = top.body.angle.abs();
     final drift = top.body.position.x.abs();
-    if (a > 0.35 || drift > 6) return Stability.critical;
-    if (a > 0.15 || drift > 3) return Stability.wobbling;
+    if (a > 0.22 || drift > 4) return Stability.critical;
+    if (a > 0.08 || drift > 2) return Stability.wobbling;
     return Stability.steady;
   }
 }
