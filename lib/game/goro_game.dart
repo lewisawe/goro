@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flame/camera.dart';
 import 'package:flame_forge2d/flame_forge2d.dart';
 import 'package:flutter/material.dart';
 
@@ -11,7 +12,11 @@ import '../world/landmarks.dart';
 /// components attach here in Phase 1. Gravity is tuned low so drops read as
 /// deliberate and the collapse is legible.
 class GoroGame extends Forge2DGame {
-  GoroGame() : super(gravity: Vector2(0, 30), zoom: 10);
+  GoroGame()
+      : super(
+          gravity: Vector2(0, 30),
+          camera: CameraComponent.withFixedResolution(width: 400, height: 800),
+        );
 
   /// Current tower height in meters (drives HUD + landmark reveals).
   double heightMeters = 0;

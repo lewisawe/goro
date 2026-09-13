@@ -10,8 +10,8 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  flame: ^1.18.0
-  flame_forge2d: ^0.18.0
+  flame: ^1.30.0
+  flame_forge2d: ^0.20.0
   purchases_flutter: ^8.0.0
 
 dev_dependencies:
