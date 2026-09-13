@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>goro — portrait HUD mockup</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700;800&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#F7F8F9; --bg-alt:#FFFFFF; --line:#1F2933; --line-soft:#C7CDD4;
+    --slab:#8A94A6; --slab-shade:#6B7280; --slab-window:#E8EBEE;
+    --accent:#0F9D8A; --warn:#E0A458; --danger:#D0555B;
+    --text-strong:#1F2933; --text-muted:#8A94A6;
+  }
+  *{margin:0;padding:0;box-sizing:border-box;}
+  body{background:#4b5563;display:flex;justify-content:center;align-items:center;min-height:100vh;font-family:'JetBrains Mono',monospace;padding:20px;gap:24px;flex-wrap:wrap;}
+  /* Phone frame: portrait 1080x2340 -> scaled */
+  .phone{width:320px;height:693px;background:var(--bg);position:relative;overflow:hidden;border-radius:28px;box-shadow:0 20px 60px rgba(0,0,0,.4);border:1px solid #0002;}
+  .label{color:var(--text-muted);font-size:9px;letter-spacing:2px;font-weight:500;text-transform:uppercase;}
+
+  /* HUD */
+  .hud{position:absolute;top:0;left:0;right:0;padding:18px 16px;display:flex;justify-content:space-between;align-items:flex-start;z-index:10;}
+  .height-num{font-size:44px;font-weight:800;color:var(--text-strong);line-height:.9;letter-spacing:-1px;}
+  .height-num span{font-size:16px;font-weight:500;color:var(--text-muted);}
+  .floors{margin-top:4px;color:var(--text-strong);font-size:11px;font-weight:700;}
+  .floors span{color:var(--text-muted);font-weight:500;letter-spacing:1px;}
+  .stability{display:flex;flex-direction:column;align-items:flex-end;gap:6px;}
+  .meter{width:96px;height:6px;background:var(--line-soft);position:relative;}
+  .meter-fill{position:absolute;left:0;top:0;height:100%;width:38%;background:var(--accent);}
+  .steady{color:var(--accent);font-size:9px;letter-spacing:2px;font-weight:700;}
+
+  /* altitude ruler */
+  .ruler{position:absolute;left:0;top:120px;bottom:0;width:34px;z-index:5;}
+  .tick{position:absolute;left:0;width:8px;height:1px;background:var(--line-soft);}
+  .tick.major{width:14px;background:var(--line);}
+  .tick-label{position:absolute;left:16px;font-size:8px;color:var(--text-muted);transform:translateY(-4px);}
+
+  /* skyline background */
+  .skyline{position:absolute;bottom:0;left:0;right:0;height:180px;z-index:1;opacity:.5;}
+  .bldg{position:absolute;bottom:0;background:var(--line-soft);opacity:.35;}
+
+  /* crane */
+  .crane{position:absolute;top:96px;left:50%;transform:translateX(-30px);z-index:6;}
+  .crane svg{display:block;}
+  .cable{position:absolute;top:150px;left:50%;transform:translateX(22px);width:1px;height:150px;background:var(--line);z-index:6;}
+  .guide{position:absolute;top:150px;left:50%;transform:translateX(52px);width:0;height:250px;border-left:1px dashed var(--line-soft);z-index:6;}
+  .held-slab{position:absolute;top:140px;left:50%;transform:translateX(-6px);width:88px;height:26px;background:var(--bg-alt);border:1.5px solid var(--line);z-index:7;}
+
+  /* tower */
+  .tower{position:absolute;bottom:0;left:50%;transform:translateX(-40px);z-index:8;width:120px;}
+  .slab{width:96px;height:30px;background:var(--slab);border:1px solid var(--slab-shade);position:relative;margin-top:-1px;}
+  .slab::before{content:"";position:absolute;top:-5px;left:4px;right:-4px;height:5px;background:var(--slab-shade);transform:skewX(-45deg);transform-origin:bottom left;opacity:.7;}
+  .slab .windows{position:absolute;top:9px;left:12px;right:12px;height:8px;display:flex;gap:6px;justify-content:center;}
+  .slab .windows i{width:12px;height:8px;background:var(--slab-window);display:block;}
+  .caption{color:#fff;font-family:'JetBrains Mono',monospace;max-width:300px;font-size:12px;line-height:1.7;}
+  .caption h3{font-size:13px;letter-spacing:2px;margin-bottom:10px;text-transform:uppercase;color:#0F9D8A;}
+  .caption b{color:#fff;}
+  .caption .sw{display:inline-block;width:10px;height:10px;vertical-align:middle;margin-right:6px;border:1px solid #0004;}
+</style>
+</head>
+<body>
+  <div class="phone">
+    <!-- skyline -->
+    <div class="skyline">
+      <div class="bldg" style="left:8%;width:22px;height:90px;"></div>
+      <div class="bldg" style="left:20%;width:30px;height:140px;"></div>
+      <div class="bldg" style="left:34%;width:18px;height:70px;"></div>
+      <div class="bldg" style="right:22%;width:26px;height:120px;"></div>
+      <div class="bldg" style="right:8%;width:34px;height:100px;"></div>
+    </div>
+
+    <!-- altitude ruler -->
+    <div class="ruler">
+      <div class="tick major" style="top:40px;"></div><div class="tick-label" style="top:40px;">40</div>
+      <div class="tick" style="top:90px;"></div>
+      <div class="tick" style="top:140px;"></div>
+      <div class="tick major" style="top:190px;"></div><div class="tick-label" style="top:190px;">30</div>
+      <div class="tick" style="top:240px;"></div>
+      <div class="tick" style="top:290px;"></div>
+      <div class="tick major" style="top:340px;"></div><div class="tick-label" style="top:340px;">20</div>
+    </div>
+
+    <!-- HUD -->
+    <div class="hud">
+      <div>
+        <div class="label">Height</div>
+        <div class="height-num">25<span>m</span></div>
+        <div class="floors">7 <span>Floors</span></div>
+      </div>
+      <div class="stability">
+        <div class="meter"><div class="meter-fill"></div></div>
+        <div class="steady">Steady</div>
+      </div>
+    </div>
+
+    <!-- crane -->
+    <div class="crane">
+      <svg width="120" height="40" viewBox="0 0 120 40" fill="none" stroke="#1F2933" stroke-width="1.5">
+        <path d="M60 4 L44 24 L76 24 Z"/>
+        <line x1="6" y1="24" x2="114" y2="24"/>
+      </svg>
+    </div>
+    <div class="held-slab"></div>
+    <div class="cable"></div>
+    <div class="guide"></div>
+
+    <!-- tower -->
+    <div class="tower">
+      <div class="slab" style="margin-left:8px;"><div class="windows"><i></i><i></i><i></i></div></div>
+      <div class="slab" style="margin-left:2px;"><div class="windows"><i></i><i></i><i></i></div></div>
+      <div class="slab" style="margin-left:12px;"><div class="windows"><i></i><i></i><i></i></div></div>
+      <div class="slab" style="margin-left:5px;"><div class="windows"><i></i><i></i><i></i></div></div>
+      <div class="slab" style="margin-left:14px;"><div class="windows"><i></i><i></i><i></i></div></div>
+      <div class="slab" style="margin-left:6px;"><div class="windows"><i></i><i></i><i></i></div></div>
+      <div class="slab" style="margin-left:10px;"><div class="windows"><i></i><i></i><i></i></div></div>
+    </div>
+  </div>
+
+  <div class="caption">
+    <h3>goro — portrait HUD</h3>
+    Adapted from your reference to a phone canvas (portrait).<br><br>
+    <b>Top-left:</b> HEIGHT readout + FLOORS<br>
+    <b>Top-right:</b> stability meter + STEADY state<br>
+    <b>Upper third:</b> line-drawn crane, cable, dotted drop guide<br>
+    <b>Center:</b> tower rising with slight per-floor lean<br>
+    <b>Left edge:</b> faint altitude ruler<br>
+    <b>Behind:</b> fading city skyline<br><br>
+    Palette anchors:<br>
+    <span class="sw" style="background:#F7F8F9"></span>bg &nbsp;
+    <span class="sw" style="background:#8A94A6"></span>slab &nbsp;
+    <span class="sw" style="background:#1F2933"></span>line &nbsp;
+    <span class="sw" style="background:#0F9D8A"></span>steady
+  </div>
+</body>
+</html>
